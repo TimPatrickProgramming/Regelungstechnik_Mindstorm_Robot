@@ -31,7 +31,6 @@ TARGET_LOOP_PERIOD = 15  # ms
 K_P = 45
 K_I = 0.36
 K_D = 2.4
-K_D2 = 0.24
 K_G = -0.01
 
 while True:
@@ -100,10 +99,11 @@ while True:
         motor_position_change.insert(0, change)
         del motor_position_change[-1]
         wheel_angle += change - drive_speed * average_control_loop_period
-        wheel_rate = sum(motor_position_change) / 4 / average_control_loop_period
+        wheel_rate = sum(motor_position_change) / 40 / average_control_loop_period
 
         # This is the main control feedback calculation.
-        output_power = (K_G * drive_speed) + (K_D * robot_body_rate + K_P * robot_body_angle + K_D2 * wheel_rate + K_I * wheel_angle)
+        output_power = (K_G * drive_speed) + (K_D * (robot_body_rate + wheel_rate) + K_P * robot_body_angle + K_I * wheel_angle)
+        print(wheel_rate)
         
         if output_power > 100:
             output_power = 100
