@@ -8,9 +8,9 @@ from pybricks.ev3devices import Motor, UltrasonicSensor, ColorSensor, GyroSensor
 from pybricks.parameters import Port, Color, ImageFile, SoundFile
 from pybricks.tools import wait, StopWatch
 
-# === Initialization ===
+# Initialization
 
-# Core brick and hardware components
+# Initialising of Peripherals and Brick
 ev3 = EV3Brick()
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
@@ -21,7 +21,7 @@ loop_timer = StopWatch()
 fall_timer = StopWatch()
 control_timer = StopWatch()
 
-# === Constants ===
+# Constants
 
 GYRO_CALIBRATION_COUNT = 200
 GYRO_SMOOTHING = 0.0005
@@ -32,7 +32,7 @@ Kp = 45
 Ki = 0.36
 Kd = 2.4
 
-# === Main balancing loop ===
+# Main balancing loop
 
 while True:
     # Show orange light during gyro calibration
@@ -52,7 +52,7 @@ while True:
     loop_count = 0
     body_angle = -0.25
 
-    # === Gyro calibration: wait until robot is still ===
+    # Gyro calibration: wait until robot is still 
     while True:
         min_gyro, max_gyro = 440, -440
         gyro_total = 0
@@ -74,7 +74,7 @@ while True:
     # Show green light to indicate ready
     ev3.light.on(Color.GREEN)
 
-    # === Balancing control loop ===
+    # Balancing control loop 
     while True:
         loop_timer.reset()
 
@@ -87,14 +87,14 @@ while True:
 
         loop_count += 1
 
-        # --- Gyro feedback ---
+        # Gyro feedback 
         gyro_speed = gyro.speed()
         gyro_offset = (1 - GYRO_SMOOTHING) * gyro_offset + GYRO_SMOOTHING * gyro_speed
         body_speed = gyro_speed - gyro_offset
         body_angle += body_speed * avg_loop_s
         gyro_correction = -0.01 * forward_speed
 
-        # --- Wheel feedback ---
+        # Wheel feedback 
         left_angle = left_motor.angle()
         right_angle = right_motor.angle()
         prev_motor_sum = motor_angle_sum
@@ -108,7 +108,7 @@ while True:
         wheel_speed = sum(motor_delta_history) / (40 * avg_loop_s)
         body_speed += wheel_speed
 
-        # --- Control calculation ---
+        # Controller calculation
         power = gyro_correction + (Kd * body_speed + Kp * body_angle + Ki * wheel_angle)
         power = max(min(power, 100), -100)
 
@@ -125,7 +125,7 @@ while True:
         # Enforce consistent loop duration
         wait(TARGET_LOOP_MS - loop_timer.time())
 
-    # === Fall recovery ===
+    # Fall recovery
 
     left_motor.stop()
     right_motor.stop()
