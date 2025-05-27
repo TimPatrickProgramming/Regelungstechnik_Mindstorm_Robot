@@ -3,117 +3,111 @@
 from pybricks.hubs import EV3Brick
 from pybricks.ev3devices import Motor, GyroSensor
 from pybricks.parameters import Port, Color
-from pybricks.media.ev3dev import SoundFile, ImageFile
 from pybricks.tools import wait, StopWatch
 
-# Initialisierung
+# Initialize the EV3 brick.
 ev3 = EV3Brick()
+
+# Initialize the motors connected to the drive wheels.
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
+
+# Initialize the gyro sensor. It is used to provide feedback for balancing the robot.
 gyro_sensor = GyroSensor(Port.S2)
 
-# Timer
+# Initialize the timers.
+fall_timer = StopWatch()
 single_loop_timer = StopWatch()
 control_loop_timer = StopWatch()
-fall_timer = StopWatch()
 
-# Konstanten
+# Defining Constants
 GYRO_CALIBRATION_LOOP_COUNT = 200
 GYRO_OFFSET_FACTOR = 0.0005
-TARGET_LOOP_PERIOD = 20  # ms
+TARGET_LOOP_PERIOD = 15  # ms
 
-# PID-Reglerwerte
-Kp = 35
-Ki = 4
-Kd = 1.2
-
-# Globale Variablen
-integral = 0
-prev_error = 0
+# PID Parameters (adjusted for stable behavior)
+K_P = 15
+K_I = 0.05
+K_D = 0.8
 
 while True:
-    try:
+    ev3.light.on(Color.ORANGE)
 
-        # Startanzeige
-        ev3.screen.load_image(ImageFile.SLEEPING)
-        ev3.light.off()
-        left_motor.reset_angle(0)
-        right_motor.reset_angle(0)
-        fall_timer.reset()
+    # Reset the sensors and variables.
+    left_motor.reset_angle(0)
+    right_motor.reset_angle(0)
+    fall_timer.reset()
 
-        control_loop_counter = 0
-        robot_body_angle = -0.2
+    motor_position_sum = 0
+    wheel_angle = 0
+    motor_position_change = [0, 0, 0, 0]
+    drive_speed, steering = 0, 0
+    control_loop_count = 0
+    robot_body_angle = -0.25
 
-        # Gyro kalibrieren
-        while True:
-            gyro_min, gyro_max, gyro_sum = 440, -440, 0
-            for _ in range(GYRO_CALIBRATION_LOOP_COUNT):
-                val = gyro_sensor.speed()
-                gyro_sum += val
-                gyro_min = min(gyro_min, val)
-                gyro_max = max(gyro_max, val)
-                wait(5)
-            if gyro_max - gyro_min < 2:
-                break
-        gyro_offset = gyro_sum / GYRO_CALIBRATION_LOOP_COUNT
+    # wait for upright still position to calibrate Gyro
+    while True:
+        gyro_minimum_rate, gyro_maximum_rate = 440, -440
+        gyro_sum = 0
+        for _ in range(GYRO_CALIBRATION_LOOP_COUNT):
+            gyro_sensor_value = gyro_sensor.speed()
+            gyro_sum += gyro_sensor_value
+            if gyro_sensor_value > gyro_maximum_rate:
+                gyro_maximum_rate = gyro_sensor_value
+            if gyro_sensor_value < gyro_minimum_rate:
+                gyro_minimum_rate = gyro_sensor_value
+            wait(5)
+        if gyro_maximum_rate - gyro_minimum_rate < 2:
+            break
+    gyro_offset = gyro_sum / GYRO_CALIBRATION_LOOP_COUNT
 
-        # Ready!
-        ev3.speaker.play_file(SoundFile.SPEED_UP)
-        ev3.screen.load_image(ImageFile.AWAKE)
-        ev3.light.on(Color.GREEN)
-        wait(500)
+    ev3.light.on(Color.GREEN)
 
-        # Balancing-Schleife mit einfachem PID
-        while True:
-            single_loop_timer.reset()
+    integral_error = 0
+    previous_error = 0
 
-            # Durchschnittliche Loopzeit berechnen
-            if control_loop_counter == 0:
-                avg_loop_time = TARGET_LOOP_PERIOD / 1000
-                control_loop_timer.reset()
-            else:
-                avg_loop_time = control_loop_timer.time() / 1000 / control_loop_counter
-            control_loop_counter += 1
+    while True:
+        single_loop_timer.reset()
 
-            # Kippwinkel berechnen
-            gyro_val = gyro_sensor.speed()
-            print(gyro_val)
-            gyro_offset = (1 - GYRO_OFFSET_FACTOR) * gyro_offset + GYRO_OFFSET_FACTOR * gyro_val
-            body_rate = gyro_val - gyro_offset
-            robot_body_angle += body_rate * avg_loop_time
+        if control_loop_count == 0:
+            average_control_loop_period = TARGET_LOOP_PERIOD / 1000
+            control_loop_timer.reset()
+        else:
+            average_control_loop_period = (control_loop_timer.time() / 1000 /
+                                           control_loop_count)
+        control_loop_count += 1
 
-            # === PID-Regelung auf robot_body_angle ===
-            error = 0 - robot_body_angle
-            integral += error * avg_loop_time
-            derivative = (error - prev_error) / avg_loop_time
+        # compute robot body angle and rate
+        gyro_sensor_value = gyro_sensor.speed()
+        gyro_offset *= (1 - GYRO_OFFSET_FACTOR)
+        gyro_offset += GYRO_OFFSET_FACTOR * gyro_sensor_value
+        robot_body_rate = gyro_sensor_value - gyro_offset
+        robot_body_angle += robot_body_rate * average_control_loop_period
 
-            output_power = Kp * error + Ki * integral + Kd * derivative
-            prev_error = error
+        # PID Controller
+        error = -robot_body_angle
+        integral_error += error * average_control_loop_period
+        derivative_error = -robot_body_rate
 
-            # Begrenzung
-            output_power = max(min(output_power, 100), -100)
+        output_power = (K_P * error) + (K_I * integral_error) + (K_D * derivative_error)
 
-            # Motoren steuern
-            left_motor.dc(output_power)
-            right_motor.dc(output_power)
+        if output_power > 100:
+            output_power = 100
+        if output_power < -100:
+            output_power = -100
 
-            # Fallerkennung
-            # if abs(output_power) < 100:
-            #     fall_timer.reset()
-            # elif fall_timer.time() > 1000:
-            #     break
+        left_motor.dc(output_power)
+        right_motor.dc(output_power)
 
-            wait(TARGET_LOOP_PERIOD - single_loop_timer.time())
+        if abs(output_power) < 100:
+            fall_timer.reset()
+        elif fall_timer.time() > 1000:
+            break
 
-        # Fallreaktion
-        # left_motor.stop()
-        # right_motor.stop()
-        # ev3.light.on(Color.RED)
-        # ev3.screen.load_image(ImageFile.KNOCKED_OUT)
-        # ev3.speaker.play_file(SoundFile.SPEED_DOWN)
-        # wait(3000)
+        wait(TARGET_LOOP_PERIOD - single_loop_timer.time())
 
-    except KeyboardInterrupt:
-        left_motor.stop()
-        right_motor.stop()
-    break
+    # When the robot falls over
+    left_motor.stop()
+    right_motor.stop()
+    ev3.light.on(Color.RED)
+    wait(3000)
