@@ -28,11 +28,15 @@ control_loop_timer = StopWatch()
 GYRO_CALIBRATION_LOOP_COUNT = 200
 GYRO_OFFSET_FACTOR = 0.0005
 TARGET_LOOP_PERIOD = 15  # ms
+K_P = 45
+K_I = 0.36
+K_D = 2.4
+K_D2 = 0.24
+K_G = -0.01
 
 while True:
     # During Callibration show Sleeping face to let user know callibration is still ongoing
-    ev3.screen.load_image(ImageFile.SLEEPING)
-    ev3.light.off()
+    ev3.light.on(Color.ORANGE)
 
     # Reset the sensors and variables.
     left_motor.reset_angle(0)
@@ -63,8 +67,6 @@ while True:
     gyro_offset = gyro_sum / GYRO_CALIBRATION_LOOP_COUNT
 
     # Awake eyes and green light shows that callibration has ended and Robot is good to go
-    ev3.speaker.play_file(SoundFile.SPEED_UP)
-    ev3.screen.load_image(ImageFile.AWAKE)
     ev3.light.on(Color.GREEN)
 
     # Main control loop for balancing the robot.
@@ -101,7 +103,7 @@ while True:
         wheel_rate = sum(motor_position_change) / 4 / average_control_loop_period
 
         # This is the main control feedback calculation.
-        output_power = (-0.01 * drive_speed) + (0.8 * robot_body_rate + 15 * robot_body_angle + 0.08 * wheel_rate + 0.12 * wheel_angle)
+        output_power = (K_G * drive_speed) + (K_D * robot_body_rate + K_P * robot_body_angle + K_D2 * wheel_rate + K_I * wheel_angle)
         
         if output_power > 100:
             output_power = 100
@@ -109,8 +111,8 @@ while True:
             output_power = -100
 
         # Drive the motors.
-        left_motor.dc(output_power - 1 * steering)
-        right_motor.dc(output_power + 1 * steering)
+        left_motor.dc(output_power - 0.1 * steering)
+        right_motor.dc(output_power + 0.1 * steering)
 
         # If output speed is +/-100% for longer than one second the roboter most likely fell over
         if abs(output_power) < 100:
@@ -129,8 +131,6 @@ while True:
 
     # Kocked out eyes and red light let user know the robot fell over
     ev3.light.on(Color.RED)
-    ev3.screen.load_image(ImageFile.KNOCKED_OUT)
-    ev3.speaker.play_file(SoundFile.SPEED_DOWN)
 
     # Wait for 3 seconds before trying to balance again.
     wait(3000)
